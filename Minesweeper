@@ -1,0 +1,561 @@
+# Basic Minesweepre game with three difficulties made by utilizing pygame 
+
+# Imports
+import pygame
+import sys
+import random
+
+# Define a class that creates cells within the grid for us
+class Cell:
+    def __init__(self):
+        # Is this cell a mine, boolean
+        self.is_mine = False
+
+        # Is this cell revealed, boolean
+        self.is_revealed = False
+
+        # Is this cell flagged, boolean
+        self.is_flagged = False
+
+        # Number of mines in adjacent cells 
+        self.adjacent_mines = 0
+
+    # Reveals the chosen cell
+    def reveal(self):
+        self.is_revealed = True
+
+    # Flags the chocen cell if it's not revealed
+    def toggle_flag(self):
+        if not self.is_revealed:
+            self.is_flagged = not self.is_flagged
+
+    # Sets mine to the chosen cell
+    def set_mine(self):
+        self.is_mine = True
+
+# Class called board that creates the grid and handles mine placement and counting adjacent
+class Board:
+    def __init__(self, rows, columns, mine_count):
+
+        # Initialize the variables
+        self.rows = rows
+        self.columns = columns
+        self.mine_count = mine_count
+
+        # Initialize a grid as an empty list
+        self.grid =[]
+
+        # Initialize that the game is in progress
+        self.game_over = False
+
+        # Iterate over the rows and columns to create 2D grid of Cell objects
+        for _ in range(rows):
+            current_row = []
+            for _ in range(columns):
+                cell = Cell()
+                current_row.append(cell)
+            self.grid.append(current_row)
+
+        # Number of safe cells and variable to store the revealed safe cells
+        self.safe_cells = rows * columns - mine_count
+        self.revealed_safe = 0
+
+        # call for the argumentless functions
+        self.place_mine()
+        self.calc_adjacent()
+        self.end()
+
+    # Function to choose random cell to place a mine into
+    def place_mine(self):
+        mines = 0
+        while mines < self.mine_count: # Places up to mine_count mines
+
+            # Select random row and column
+            rand_row = random.randint(0, self.rows -1) 
+            rand_col = random.randint(0, self.columns -1)
+
+            cell = self.grid[rand_row][rand_col] # Random cell
+
+            # Set mine to random cell by the set mine function
+            if not cell.is_mine:
+                cell.set_mine()
+                mines += 1
+
+    # Fnction to calculate the number of adjacent mines to a chosen cell
+    def calc_adjacent(self):
+        for row in range(self.rows):
+            for col in range(self.columns):
+                cell = self.grid[row][col]
+                if cell.is_mine == True: # If cell has mine, skip it
+                    continue
+                
+                # Count the mines
+                n_mines = 0
+
+                # Check the cells on both sides in rows and columns
+                for r in [-1, 0, 1]:
+                    for c in [-1, 0, 1]:
+                        if r == 0 and c == 0: 
+                            continue # Skip the cell itself
+                        
+                        # Neighbouring cells 
+                        n_row = row + r 
+                        n_col = col + c
+
+                        # Check if the neighbouring cell is mine and increase the mine count
+                        if 0 <= n_row < self.rows and 0 <= n_col < self.columns:
+                            n_cell = self.grid[n_row][n_col]
+                            if n_cell.is_mine == True:
+                                n_mines += 1
+                cell.adjacent_mines = n_mines
+
+    # Function to reveal the wanted cell
+    def reveal(self, row, col):
+        if not (0 <= row < self.rows and 0 <= col < self.columns): # Boundaries
+            return
+        
+        cell = self.grid[row][col]
+
+        # If cell is already revealed or flagged, ignore
+        if cell.is_revealed or cell.is_flagged:
+            return
+        
+        # Call the function
+        cell.reveal()
+        
+        # If mine -> game over
+        if cell.is_mine:
+            self.game_over = True
+            return
+        
+        # If revealed and not a mine add to the safe reveals
+        if not cell.is_mine:
+            self.revealed_safe += 1
+
+        # Check if adjacent mines
+        if cell.adjacent_mines == 0:
+            # Reveal all adjacent non-mine cells
+            for r in [-1, 0, 1]:
+                for c in [-1, 0, 1]:
+                    if r == 0 and c == 0: # If the cell itself, skip
+                        continue
+                
+                    n_row = row + r
+                    n_col = col + c
+
+                    if 0 <= n_row < self.rows and 0 <= n_col < self.columns: # Boundaries
+                        neighbor = self.grid[n_row][n_col]
+                        if not neighbor.is_mine:  # STOP if neighbor is a mine
+                            self.reveal(n_row, n_col) # reveal the adjacent non mine cells
+
+    # Function to flag the wanted cell
+    def flag(self, row, col):
+        # Call for the Cell function to toggle flag
+        cell = self.grid[row][col]
+        cell.toggle_flag()
+
+    # Function to determine when the game ends
+    def end(self):
+        # Check each row in grid and each cell in row, if it's not mine and not revealed, game on goes and otherwise ends
+        for row in self.grid:
+            for cell in row:
+                if cell.is_mine == False and cell.is_revealed == False: # if cell is not a mine and is not revealed do return false
+                    return False
+        return True
+
+
+class Game:
+    def __init__(self):
+        
+        # Initialize the values to zero
+        self.rows = None
+        self.columns = None
+        self.mine_count = None
+
+        # Screen dimensions
+        self.screen_width = 720
+        self.screen_height = 480
+
+        # Initialize the pygame and board
+        pygame.init()
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        self.clock = pygame.time.Clock()
+        self.running = True
+        self.board = None
+
+        # Time delay
+        self.end_time = None
+        self.end_delay = 2500
+
+        # Define text font
+        self.font = pygame.font.Font(None, 36) # default font at size 36
+        
+        # Initially opens menu
+        self.state = "menu"  # menu / game / end / win / lose
+        self.config = None
+
+        # Button dimensions
+        self.button_width = 200
+        self.button_height = 60
+
+        # Centering for buttons
+        self.center_x = self.screen_width / 2 - self.button_width / 2
+
+        # Button heights
+        self.easy_y = 200
+        self.medium_y = 300
+        self.hard_y = 400
+
+
+        # Menu screen button rectangles
+        easy_rect = pygame.Rect(self.center_x, self.easy_y, self.button_width, self.button_height)
+        medium_rect = pygame.Rect(self.center_x, self.medium_y, self.button_width, self.button_height)
+        hard_rect = pygame.Rect(self.center_x, self.hard_y, self.button_width, self.button_height)
+
+        # End screen button rectangles
+        again_rect = pygame.Rect(self.center_x, self.easy_y, self.button_width, self.button_height)
+        menu_rect = pygame.Rect(self.center_x, self.medium_y, self.button_width, self.button_height)
+        
+        # Menu buttons 
+        self.menu_buttons = [{"label": "Easy",
+                              "rect": easy_rect,
+                              "rows": 8,
+                              "columns": 8,
+                              "mines": 10},
+                              
+                              {"label": "Medium",
+                               "rect": medium_rect,
+                               "rows": 16,
+                               "columns": 16,
+                               "mines": 40},
+                               
+                               {"label": "Hard",
+                                "rect": hard_rect,
+                                "rows": 30,
+                                "columns": 16,
+                                "mines": 99}]
+        
+        # End screen buttons
+        self.end_buttons = [{"label": "New Game",
+                             "rect": again_rect},
+                             
+                             {"label": "Menu",
+                              "rect": menu_rect}]
+
+
+    # Define the postion of the mouse on the grid
+    def mouse_to_grid(self, mouse_pos):
+
+        # If not on the game board, don't call for the function
+        if not self.board:
+            return None, None
+        
+        # Mouse coordinates
+        mouse_x, mouse_y = mouse_pos
+        col = min(int(mouse_x // self.cell_width), self.columns - 1) # Convert pixels to grid coordinates with index overflow prevention
+        row = min(int(mouse_y // self.cell_height), self.rows - 1)
+        return row, col
+
+    # Function to handle running the game
+    def run(self):
+
+        while self.running == True:
+            self.screen.fill((255, 255, 255))  # Clear screen
+
+            # Closes the game when the X button is pressed
+            for event in pygame.event.get(): 
+                if event.type == pygame.QUIT:
+                    self.running = False
+                
+                # Open menu
+                if self.state == "menu":
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+
+                        # Only left clicks work on menu
+                        if event.button != 1:
+                            continue
+                        
+                        # Mouse position
+                        mouse_pos = pygame.mouse.get_pos()
+
+                        # Iterate over the menu buttons
+                        for button in self.menu_buttons:
+                            if button["rect"].collidepoint(mouse_pos): # Recognize when the button is pressed
+                                
+                                # Fetch the values corresponding each button
+                                self.rows = button["rows"]
+                                self.columns = button["columns"]
+                                self.mines = button["mines"]
+
+                                # Update cell sizes for the new board
+                                self.cell_width = self.screen_width / self.columns
+                                self.cell_height = self.screen_height / self.rows
+
+                                # Setup the board according to the chosen mode
+                                self.board = Board(self.rows, self.columns, self.mines)
+
+                                # Load and scale the mine and flag images
+                                self.mine_img = pygame.image.load("") # !!!Insert mine image file here!!!
+                                self.mine_img = pygame.transform.scale(self.mine_img, (self.cell_width, self.cell_height))
+                                self.flag_img = pygame.image.load("") # !!!Insert flag image file here!!!
+                                self.flag_img = pygame.transform.scale(self.flag_img, (self.cell_width, self.cell_height))
+                                
+                                # Switch to the game state
+                                self.state = "game"
+
+                # Game state
+                elif self.state == "game":
+                    # Check when the board is clicked and that the game is not over already
+                    if event.type == pygame.MOUSEBUTTONDOWN and not self.board.game_over:
+                        mouse_pos = pygame.mouse.get_pos()
+
+                        # Get mouse position on the board
+                        row, col = self.mouse_to_grid(mouse_pos)
+
+                        # clicking events
+                        if event.button == 1: # Left click reveal
+
+                            # Reveal on left click
+                            self.board.reveal(row, col)
+
+                            # If game over = true end the game 
+                            if self.board.game_over:
+                                self.end_time = pygame.time.get_ticks() # Delay to show the board at the end
+                                self.state = "end"
+
+                            # If all the safe cells are revealed, end the game
+                            elif self.board.revealed_safe == self.board.safe_cells:
+                                self.end_time = pygame.time.get_ticks() # Delay to show the board at the end
+                                self.state = "end"
+
+                        # Right click to flag
+                        elif event.button == 3: 
+                            self.board.flag(row, col)
+                
+                # If the game state is end decide win and lose conditions
+                elif self.state == "end":
+                    if pygame.time.get_ticks() - self.end_time >= self.end_delay: # Check for the delay time
+                        if self.board.game_over:
+                            self.state = "lose" # If game over = True -> Lose
+                        else:
+                            self.state = "win" # Else victory
+
+                # Check the states win and lose to open respective screens
+                elif self.state in ("win", "lose"):
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+
+                        # Only left clicks work on menus
+                        if event.button != 1:
+                            continue
+                        
+                        mouse_pos = pygame.mouse.get_pos()
+
+                        # Iterate over end screen uttons
+                        for button in self.end_buttons:
+                            if button["rect"].collidepoint(mouse_pos):
+
+                                # If New Game button pressed opens new board of the same difficulty and switches state to game
+                                if button["label"] == "New Game":
+                                    self.board = Board(self.rows, self.columns, self.mines)
+                                    self.state = "game"
+
+                                # If Menu button pressed, sets state to menu and resets board and variables
+                                elif button["label"] == "Menu":
+                                    self.state = "menu"
+                                    self.board = None
+                                    self.rows = None
+                                    self.columns = None
+                                    self.mines = None
+
+            # Draw respective screens depending on the game state
+            if self.state == "menu":
+                self.draw_menu()
+            elif self.state in ("game", "end"):
+                self.draw_game()
+            elif self.state == "lose":
+                self.draw_end()
+            elif self.state == "win":
+                self.draw_win()
+            pygame.display.flip()
+            self.clock.tick(60)
+
+    # Function to create the menu screen 
+    def draw_menu(self):
+
+        # Define colours as (R, G, B)
+        WHITE = (255,255,255)
+        BLACK = (0,0,0)
+        GRAY = (160,160,160)
+        DARK_GRAY = (100,100,100)
+        RED = (255,0,0)
+        BLUE = (0,0,255)
+
+        # Begin with white fill
+        self.screen.fill(WHITE)
+
+        # Game title and its colour and placement 
+        title_surface = self.font.render("Minesweeper", True, RED)
+        title_rect = title_surface.get_rect(center=(self.screen_width//2, 100))
+
+        # Draw the title on the screen
+        self.screen.blit(title_surface, title_rect)
+        
+        # Iterate buttons 
+        for button in self.menu_buttons:
+
+            # Fetch button size and label
+            rect = button["rect"]
+            label = button["label"]
+
+            # Get mouse position
+            mouse_pos = pygame.mouse.get_pos()
+
+            # If hovering over button, gray, if pressed dark gray
+            if rect.collidepoint(mouse_pos):
+                colour = GRAY
+            else:
+                colour = DARK_GRAY
+
+            # Draw the menu buttons with respective colours 
+            pygame.draw.rect(self.screen, colour, rect)
+            pygame.draw.rect(self.screen, BLACK, rect, 2) # Button borders with thickness 2
+
+            # Add the difficulty label text to the button center
+            text_surface = self.font.render(label, True, BLUE)
+            text_rect = text_surface.get_rect(center = rect.center)
+            self.screen.blit(text_surface, text_rect)
+
+    # Function to create the visual side of the board
+    def draw_game(self):
+
+        # Define colours as (R, G, B)
+        WHITE = (255,255,255)
+        BLACK = (0,0,0)
+        GRAY = (160,160,160)
+        DARK_GRAY = (100,100,100)
+        RED = (255,0,0)
+        BLUE = (0,0,255) 
+
+        # Begin with white fill
+        self.screen.fill(WHITE)
+
+        # Scale the font size of the numbers on cells according to the difficulty
+        font_size = int(min(self.cell_width, self.cell_height) * 0.9)
+        font = pygame.font.Font(None, font_size) # default font with scaling size
+
+        # Iterate over the board
+        for row in range(self.board.rows):
+            for col in range(self.board.columns):
+                cell = self.board.grid[row][col]
+
+                # The cell rectangle size on screen
+                x = col * self.cell_width
+                y = row * self.cell_height
+
+                #creates rectangles at the cell locations
+                rect = pygame.Rect(int(x), int(y), int(self.cell_width), int(self.cell_height))
+
+
+                # Game state colours/images
+                if cell.is_revealed:
+                    
+                    # Base colour of revealed cell set to gray
+                    pygame.draw.rect(self.screen, GRAY, rect)
+
+                    # Add mine image to revealed mines
+                    if cell.is_mine:
+                        self.screen.blit(self.mine_img,(x,y))
+                    
+                    # Add number of adjacent mines to cell if revealed safe cell enxt to mine/mines
+                    elif cell.adjacent_mines > 0:
+                        text = font.render(str(cell.adjacent_mines), True, BLUE)
+                        text_rect = text.get_rect(center=(x + self.cell_width/2, y + self.cell_height/2))
+                        self.screen.blit(text, text_rect)
+                
+                # Flagged cells with base colour white and added image
+                elif cell.is_flagged:
+                    pygame.draw.rect(self.screen, WHITE, rect)
+                    self.screen.blit(self.flag_img,(x,y))
+                
+                # Non-revealed cells have base colour dark gray and black border of thickness 1
+                else:
+                    pygame.draw.rect(self.screen, DARK_GRAY, rect)
+                pygame.draw.rect(self.screen, BLACK, rect, 1) # Border
+
+    # Function to visualize the end screen
+    def draw_end(self):
+
+        # Define colours as (R, G, B)
+        WHITE = (255,255,255)
+        BLACK = (0,0,0)
+        GRAY = (160,160,160)
+        DARK_GRAY = (100,100,100)
+        RED = (255,0,0)
+        BLUE = (0,0,255) 
+
+        # Begin with white fill
+        self.screen.fill(WHITE)
+
+        # End screen text at the top center
+        end_surface = self.font.render("GAME OVER", True, RED)
+        end_rect = end_surface.get_rect(center=(self.screen_width//2, 100))
+        self.screen.blit(end_surface, end_rect)
+        
+        # Iterate over buttons
+        for button in self.end_buttons:
+
+            # fetch sizes and labels 
+            rect = button["rect"]
+            label = button["label"]
+
+            # Fetch mouse position and set hover over and pressed colours
+            mouse_pos = pygame.mouse.get_pos()
+            if rect.collidepoint(mouse_pos):
+                colour = GRAY
+            else:
+                colour = DARK_GRAY
+
+            # Draw the buttons with black borders of thickness 2
+            pygame.draw.rect(self.screen, colour, rect)
+            pygame.draw.rect(self.screen, BLACK, rect, 2) # Border with thickness 2
+
+            # Add the text on the button center
+            text_surface = self.font.render(label, True, BLUE)
+            text_rect = text_surface.get_rect(center = rect.center)
+            self.screen.blit(text_surface, text_rect)
+    
+    # Function to isualize the victory screen
+    def draw_win(self):
+
+        # Colours used
+        WHITE = (255,255,255)
+        GREEN = (0,200,0)
+        GRAY = (160,160,160)
+        BLACK = (0,0,0)
+
+        # Begin with white fill
+        self.screen.fill(WHITE)
+
+        # Add the victory screen text to the top center
+        win_surface = self.font.render("YOU WIN!", True, GREEN)
+        win_rect = win_surface.get_rect(center=(self.screen_width//2, 150))
+        self.screen.blit(win_surface, win_rect)
+
+        # Iterate over the buttons
+        for button in self.end_buttons:
+
+            # Draw button of the corresponding size
+            pygame.draw.rect(self.screen, GRAY, button["rect"])
+
+            # Add the text to the buttons
+            text = self.font.render(button["label"], True, BLACK)
+            self.screen.blit(text, text.get_rect(center=button["rect"].center))
+
+
+# Main block
+if __name__ == "__main__":
+    pygame.init() # Initializes pygame
+    game = Game() # Creates an instance of our game
+    game.run()  # Runs the game
+    pygame.quit() # Pygame shutdown
+    sys.exit()  # Shuts down python instances
